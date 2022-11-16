@@ -28,14 +28,46 @@ async function run() {
         const appointmentOptionsCollection =
             database.collection('appointmentOptions');
 
-        // get appointment options
+        // bookings collection
+        const bookingsCollection = database.collection('bookingsCollection');
+
+        // get all appointment options
+        // Use Aggregate to query multiple collection and then merge data
         app.get('/appointmentOptions', async (req, res) => {
+            const date = req.query.date;
             const query = {};
             const options = await appointmentOptionsCollection
                 .find(query)
                 .toArray();
 
+            // get the bookings of provided date
+            const bookingQuery = { appointmentDate: date };
+            const alreadyBooked = await bookingsCollection
+                .find(bookingQuery)
+                .toArray();
+
+            // remove slots for booked options
+            options.forEach((option) => {
+                const optionBooked = alreadyBooked.filter(
+                    (book) => book.treatment === option.name
+                );
+                const bookedSlots = optionBooked.map((book) => book.slot);
+                const remainingSlots = option.slots.filter(
+                    (slot) => !bookedSlots.includes(slot)
+                );
+
+                option.slots = remainingSlots;
+            });
+
             res.send(options);
+        });
+
+        // post bookings
+        app.post('/bookings', async (req, res) => {
+            const booking = req.body;
+            const result = await bookingsCollection.insertOne(booking);
+
+            res.send(result);
         });
     } finally {
     }
