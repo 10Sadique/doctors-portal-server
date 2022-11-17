@@ -185,9 +185,9 @@ async function run() {
         });
 
         // get admin users
-        app.get('/users/admin/:id', async (req, res) => {
-            const id = req.params.id;
-            const query = { _id: ObjectId(id) };
+        app.get('/users/admin/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email };
             const user = await userCollection.findOne(query);
             res.send({
                 isAdmin: user?.role === 'admin',
