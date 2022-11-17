@@ -27,9 +27,10 @@ async function run() {
         // appointment options collection
         const appointmentOptionsCollection =
             database.collection('appointmentOptions');
-
         // bookings collection
         const bookingsCollection = database.collection('bookingsCollection');
+        // user collection
+        const userCollection = database.collection('users');
 
         // get all appointment options
         // Use Aggregate to query multiple collection and then merge data
@@ -142,6 +143,14 @@ async function run() {
             }
 
             const result = await bookingsCollection.insertOne(booking);
+
+            res.send(result);
+        });
+
+        // post users
+        app.post('/users', async (req, res) => {
+            const user = req.body;
+            const result = await userCollection.insertOne(user);
 
             res.send(result);
         });
