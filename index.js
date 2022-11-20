@@ -39,7 +39,6 @@ const client = new MongoClient(uri, {
 async function run() {
     try {
         const database = client.db('doctorsPortal');
-
         // appointment options collection
         const appointmentOptionsCollection =
             database.collection('appointmentOptions');
@@ -47,6 +46,25 @@ async function run() {
         const bookingsCollection = database.collection('bookingsCollection');
         // user collection
         const userCollection = database.collection('users');
+        // doctors collection
+        const doctorsCollection = database.collection('doctors');
+
+        /**
+         * Verify admin middleware
+         * @NOTE always run after the verifyJWT middleware
+         */
+        const verifyAdmin = async (req, res, next) => {
+            const decodedEmail = req.decoded.email;
+            const query = { email: decodedEmail };
+            const user = await userCollection.findOne(query);
+
+            if (user?.role !== 'admin') {
+                return res.status(403).send({
+                    message: 'forbidden access',
+                });
+            }
+            next();
+        };
 
         // get all appointment options
         // Use Aggregate to query multiple collection and then merge data
@@ -105,6 +123,7 @@ async function run() {
                         $project: {
                             name: 1,
                             slots: 1,
+                            price: 1,
                             booked: {
                                 $map: {
                                     input: '$booked',
@@ -117,6 +136,7 @@ async function run() {
                     {
                         $project: {
                             name: 1,
+                            price: 1,
                             slots: {
                                 $setDifference: ['$slots', '$booked'],
                             },
@@ -126,6 +146,17 @@ async function run() {
                 .toArray();
 
             res.send(options);
+        });
+
+        // get specialty
+        app.get('/appointmentSpecialty', async (req, res) => {
+            const query = {};
+            const result = await appointmentOptionsCollection
+                .find(query)
+                .project({ name: 1 })
+                .toArray();
+
+            res.send(result);
         });
 
         // get bookings
@@ -195,33 +226,72 @@ async function run() {
         });
 
         // put admin user
-        app.put('/users/admin/:id', verifyJWT, async (req, res) => {
-            const decodedEmail = req.decoded.email;
-            const query = { email: decodedEmail };
-            const user = await userCollection.find(query);
+        app.put(
+            '/users/admin/:id',
+            verifyJWT,
+            verifyAdmin,
+            async (req, res) => {
+                const id = req.params.id;
+                const filter = { _id: ObjectId(id) };
+                const updatedDoc = {
+                    $set: {
+                        role: 'admin',
+                    },
+                };
+                const options = { upsert: true };
+                const result = await userCollection.updateOne(
+                    filter,
+                    updatedDoc,
+                    options
+                );
 
-            if (user?.role !== 'adimn') {
-                return res.status(403).send({
-                    message: 'forbidden access',
-                });
+                res.send(result);
             }
+        );
 
-            const id = req.params.id;
-            const filter = { _id: ObjectId(id) };
-            const updatedDoc = {
-                $set: {
-                    role: 'admin',
-                },
-            };
-            const options = { upsert: true };
-            const result = await userCollection.updateOne(
-                filter,
-                updatedDoc,
-                options
-            );
+        // get doctors
+        app.get('/doctors', verifyJWT, verifyAdmin, async (req, res) => {
+            const query = {};
+            const doctors = await doctorsCollection.find(query).toArray();
+
+            res.send(doctors);
+        });
+
+        // post doctors
+        app.post('/doctors', verifyJWT, verifyAdmin, async (req, res) => {
+            const doctor = req.body;
+            const result = await doctorsCollection.insertOne(doctor);
 
             res.send(result);
         });
+
+        // delete doctors
+        app.delete('/doctors/:id', verifyJWT, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+
+            const filter = { _id: ObjectId(id) };
+            const result = await doctorsCollection.deleteOne(filter);
+
+            res.send(result);
+        });
+
+        // temporary to update service price
+        // app.get('/addPrice', async (req, res) => {
+        //     const query = {};
+        //     const options = { upsert: true };
+        //     const updatedDoc = {
+        //         $set: {
+        //             price: 99,
+        //         },
+        //     };
+
+        //     const result = await appointmentOptionsCollection.updateMany(
+        //         query,
+        //         updatedDoc,
+        //         options
+        //     );
+        //     res.send(result);
+        // });
 
         // get jwt
         app.get('/jwt', async (req, res) => {
@@ -231,7 +301,7 @@ async function run() {
 
             if (user) {
                 const token = jwt.sign({ email }, process.env.ACCESS_TOKEN, {
-                    expiresIn: '1h',
+                    // expiresIn: '1h',
                 });
 
                 return res.send({ accessToken: token });
